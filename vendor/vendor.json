@@ -1,0 +1,13 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "+fL/8Ch3k9oo5/Lc06SKBuM8NbI=",
+			"path": "github.com/ethereum/go-ethereum/crypto/secp256k1",
+			"revision": "",
+			"tree": true
+		}
+	],
+	"rootPath": "github.com/vulcanize/ens_watcher"
+}

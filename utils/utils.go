@@ -33,6 +33,8 @@ func NameHash(name string) common.Hash {
 	return crypto.Keccak256Hash(append(remainderHash, labelHash...))
 }
 
-func CreateSubnode(node, label []byte) common.Hash {
-	return crypto.Keccak256Hash(append(node, label...))
+func CreateSubnode(node, label string) string {
+	nodeBytes := common.Hex2Bytes(node)
+	labelBytes := common.Hex2Bytes(label)
+	return crypto.Keccak256Hash(append(nodeBytes, labelBytes...)).Hex()
 }
