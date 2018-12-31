@@ -1,0 +1,25 @@
+dist: trusty
+language: go
+go:
+- 1.11
+services:
+- postgresql
+addons:
+  postgresql: "9.6"
+
+go_import_path: github.com/vulcanize/ens_watcher
+
+before_install:
+# ginkgo golint migrate
+- make installtools
+- bash ./scripts/install-postgres-10.sh
+
+before_script:
+- sudo -u postgres createdb vulcanize_ens_watcher_private
+- make migrate NAME=vulcanize_ens_watcher_private
+
+script:
+- make test
+
+notifications:
+  email: false

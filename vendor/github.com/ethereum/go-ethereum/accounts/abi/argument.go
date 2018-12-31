@@ -100,6 +100,15 @@ func (arguments Arguments) Unpack(v interface{}, data []byte) error {
 	return arguments.unpackAtomic(v, marshalledValues)
 }
 
+// Unpack performs the operation hexdata -> Go map
+func (arguments Arguments) UnpackIntoMap(v map[string]interface{}, data []byte) error {
+	marshalledValues, err := arguments.UnpackValues(data)
+	if err != nil {
+		return err
+	}
+	return arguments.unpackIntoMap(v, marshalledValues)
+}
+
 func (arguments Arguments) unpackTuple(v interface{}, marshalledValues []interface{}) error {
 
 	var (
@@ -148,6 +157,19 @@ func (arguments Arguments) unpackTuple(v interface{}, marshalledValues []interfa
 		default:
 			return fmt.Errorf("abi:[2] cannot unmarshal tuple in to %v", typ)
 		}
+	}
+	return nil
+}
+
+// Unpack arguments into map
+func (arguments Arguments) unpackIntoMap(v map[string]interface{}, marshalledValues []interface{}) error {
+	// Make sure map is not nil
+	if v == nil {
+		return fmt.Errorf("abi: cannot unpack into a nil map")
+	}
+
+	for i, arg := range arguments.NonIndexed() {
+		v[arg.Name] = marshalledValues[i]
 	}
 	return nil
 }
