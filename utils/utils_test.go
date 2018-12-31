@@ -19,3 +19,26 @@
 //namehash('foo.eth') = 0xde9b09fd7c5f901e23a3f19fecc54828e9c848539801e86591bd9801b019f84f
 
 package utils_test
+
+import (
+	"github.com/ethereum/go-ethereum/common"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
+	"github.com/vulcanize/ens_watcher/utils"
+)
+
+var _ = Describe("Utils", func() {
+	Describe("NameHash", func() {
+		It("Returns the namehash for the input string", func() {
+			hash := utils.NameHash("")
+			Expect(hash).To(Equal(common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")))
+
+			hash = utils.NameHash("eth")
+			Expect(hash).To(Equal(common.HexToHash("0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae")))
+
+			hash = utils.NameHash("foo.eth")
+			Expect(hash).To(Equal(common.HexToHash("0xde9b09fd7c5f901e23a3f19fecc54828e9c848539801e86591bd9801b019f84f")))
+		})
+	})
+})

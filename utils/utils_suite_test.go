@@ -15,3 +15,21 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package utils_test
+
+import (
+	"io/ioutil"
+	"log"
+	"testing"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
+
+func TestRepository(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Utils Suite Test")
+}
+
+var _ = BeforeSuite(func() {
+	log.SetOutput(ioutil.Discard)
+})

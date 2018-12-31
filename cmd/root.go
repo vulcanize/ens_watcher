@@ -40,15 +40,7 @@ var (
 	ipc                 string
 	levelDbPath         string
 	startingBlockNumber int64
-	syncAll             bool
-	endingBlockNumber   int64
 	network             string
-	contractAddress     string
-	contractAddresses   []string
-	contractEvents      []string
-	contractMethods     []string
-	eventAddrs          []string
-	methodAddrs         []string
 )
 
 var rootCmd = &cobra.Command{
