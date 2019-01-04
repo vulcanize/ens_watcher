@@ -55,7 +55,7 @@ This command syncs VulcanizeDB with the configured Ethereum node.
 `generateRecords` starts up a process to watch for ENS-registry and ENS-resolver events and transform the data emitted into Postgres.    
 
 It transforms data collected from these events:
-```go
+```
 // Registry events
 event NewOwner(bytes32 indexed node, bytes32 indexed label, address owner);
 event Transfer(bytes32 indexed node, address owner);
@@ -88,6 +88,7 @@ CREATE TABLE public.domain_records (
   content_type          BIGINT,
   pub_key_x             VARCHAR(66),
   pub_key_y             VARCHAR(66),
+  ttl                   BIGINT,
   text_key              TEXT,
   indexed_text_key      TEXT,
   multihash             TEXT,
@@ -305,12 +306,12 @@ WHERE resolver_addr = <address>;
 To get which domains were using a given resolver at a given block height:
 ```postgresql
 WITH records_at AS (SELECT * 
-                        FROM public.domain_records  
-                        AS record
-                        WHERE record.block_number <= <block_height>
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+                    FROM public.domain_records  
+                    AS record
+                    WHERE record.block_number <= <block_height>
+                    LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
+                    AND newer_record.block_number > record.block_number
+                    WHERE newer_record.block_number IS NULL)
 SELECT *
 FROM records_at
 WHERE resolver_addr = <address>;

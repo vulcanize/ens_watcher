@@ -32,4 +32,5 @@ type DomainModel struct {
 	TextKey        string `db:"text_key"`
 	IndexedTextKey string `db:"indexed_text_key"`
 	Multihash      string `db:"multihash"`
+	TTL            string `db:"ttl"`
 }

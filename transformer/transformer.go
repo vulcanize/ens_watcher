@@ -221,26 +221,37 @@ func (tr *transformer) Execute() error {
 // Keeps track of Resolver addresses that are seen emitted so that we can watch them downstream
 func (tr *transformer) processRegistryLogs(logs map[string][]types.Log, blockNumber int64) error {
 	// Process registry NewOwner logs
-	// These represent the creation of new nodes/namehashes so a new record is created
 	for _, newOwner := range logs["NewOwner"] {
 		parentHash := newOwner.Values["node"]
 		labelHash := newOwner.Values["label"]
 		subnode := utils.CreateSubnode(parentHash, labelHash)
-		// Create a new record
-		record := &models.DomainModel{
-			NameHash:    subnode,
-			ParentHash:  parentHash,
-			LabelHash:   labelHash,
-			Owner:       newOwner.Values["owner"],
-			BlockNumber: blockNumber,
+		var record *models.DomainModel
+		exists, err := tr.ENSRepository.RecordExists(subnode)
+		if err != nil {
+			return err
 		}
-		// Persist new record
-		err := tr.ENSRepository.CreateRecord(*record)
+		if exists { // If a record already exists for this subdomain, retrieve it for updating
+			record, err = tr.ENSRepository.GetRecord(subnode, blockNumber)
+			if err != nil {
+				return err
+			}
+		} else { // If no previous record exists for this subdomain, create a new one
+			record = &models.DomainModel{}
+		}
+		// Update the new or retrieved record with values emitted from this log
+		record.NameHash = subnode
+		record.ParentHash = parentHash
+		record.LabelHash = labelHash
+		record.Owner = newOwner.Values["owner"]
+		record.BlockNumber = blockNumber
+		// Persist the new or updated record
+		err = tr.ENSRepository.CreateRecord(*record)
 		if err != nil {
 			return err
 		}
 	}
 
+	// Note that for all other logs a record should already exist (NewOwner event from domain's creation must have already occurred)
 	// Process registry Transfer logs
 	for _, transfer := range logs["Transfer"] {
 		// Get most recent/current record
@@ -267,7 +278,7 @@ func (tr *transformer) processRegistryLogs(logs map[string][]types.Log, blockNum
 		}
 		// Update with changed ttl and block height
 		lastRecord.BlockNumber = blockNumber
-		lastRecord.Owner = ttl.Values["ttl"]
+		lastRecord.TTL = ttl.Values["ttl"]
 		// Persist new record
 		err = tr.ENSRepository.CreateRecord(*lastRecord)
 		if err != nil {

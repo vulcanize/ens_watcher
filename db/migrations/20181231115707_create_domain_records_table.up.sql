@@ -15,5 +15,6 @@ CREATE TABLE public.domain_records (
   text_key              TEXT,
   indexed_text_key      TEXT,
   multihash             TEXT,
+  ttl                   BIGINT,
   UNIQUE (block_number, name_hash)
 );

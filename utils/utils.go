@@ -17,21 +17,9 @@
 package utils
 
 import (
-	"strings"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
-
-func NameHash(name string) common.Hash {
-	if name == "" {
-		return common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
-	}
-	labels := strings.Split(name, ".")
-	labelHash := crypto.Keccak256([]byte(labels[len(labels)-1]))
-	remainderHash := NameHash(strings.Join(labels[:len(labels)-1], ".")).Bytes()
-	return crypto.Keccak256Hash(append(remainderHash, labelHash...))
-}
 
 func CreateSubnode(node, label string) string {
 	nodeBytes := common.Hex2Bytes(node)

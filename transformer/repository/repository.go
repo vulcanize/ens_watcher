@@ -17,24 +17,46 @@
 package repository
 
 import (
+	"github.com/hashicorp/golang-lru"
 	"github.com/vulcanize/vulcanizedb/pkg/datastore/postgres"
 
 	"github.com/vulcanize/ens_watcher/transformer/models"
 )
 
 type ENSRepository interface {
+	RecordExists(node string) (bool, error)
 	CreateRecord(record models.DomainModel) error
 	GetRecord(node string, blockNumber int64) (*models.DomainModel, error)
 }
 
 type ensRepository struct {
-	db *postgres.DB
+	db          *postgres.DB
+	cachedNodes *lru.Cache
 }
 
 func NewENSRepository(db *postgres.DB) *ensRepository {
+	cache, _ := lru.New(1000)
 	return &ensRepository{
-		db: db,
+		db:          db,
+		cachedNodes: cache,
 	}
+}
+
+func (r *ensRepository) RecordExists(node string) (bool, error) {
+	_, ok := r.cachedNodes.Get(node)
+	if ok {
+		return true, nil
+	}
+
+	var exists bool
+	err := r.db.Select(&exists,
+		`SELECT EXISTS(SELECT 1 
+				FROM public.domain_records
+				WHERE name_hash = $1
+				LIMIT 1`,
+		node)
+
+	return exists, err
 }
 
 func (r *ensRepository) CreateRecord(record models.DomainModel) error {
@@ -54,8 +76,9 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				pub_key_y,
 				text_key,
 				indexed_text_key,
-				multihash)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				multihash,
+				ttl)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 			    ON CONFLICT (block_number, name_hash) DO UPDATE SET
 				(block_number, 
 			    name_hash, 
@@ -71,7 +94,8 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				pub_key_y,
 				text_key,
 				indexed_text_key,
-				multihash) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+				multihash,
+				ttl) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		record.BlockNumber,
 		record.NameHash,
 		record.LabelHash,
@@ -87,9 +111,16 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 		record.TextKey,
 		record.IndexedTextKey,
 		record.Multihash,
+		record.TTL,
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	r.cachedNodes.Add(record.NameHash, true)
+
+	return nil
 }
 
 // Gets the record for the give node at the given blockheight
