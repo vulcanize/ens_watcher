@@ -112,8 +112,7 @@ But, this also affects how queries against the database must be structured to ex
 
 The below returns the most recent record for a given domain namehash
 ```postgresql
-SELECT *
-FROM public.domain_records
+SELECT * FROM public.domain_records
 WHERE name_hash = <domain_name_hash>
 AND block_number <= (SELECT MAX(block_number)
                     FROM public.domain_records)
@@ -123,8 +122,7 @@ DESC LIMIT 1;
 
 The below returns the record for a given domain namehash at the given block height
 ```postgresql
-SELECT *
-FROM public.domain_records
+SELECT * FROM public.domain_records
 WHERE name_hash = <domain_name_hash>
 AND block_number <= <block_height>
 ORDER BY block_number
@@ -133,23 +131,20 @@ DESC LIMIT 1;
 
 The below returns the most recent record for all domains 
 ```postgresql
-SELECT * 
-FROM public.domain_records 
-AS record
-LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-AND newer_record.block_number > record.block_number
-WHERE newer_record.block_number IS NULL;
+SELECT * FROM public.domain_records AS records
+LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+AND newer_records.block_number > records.block_number
+WHERE newer_records.block_number IS NULL;
 ```
 
 The below returns the records for all domains at a given blockheight
 ```postgresql
-SELECT * 
-FROM public.domain_records 
-AS record
-WHERE record.block_number <= <block_height>
-LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-AND newer_record.block_number > record.block_number
-WHERE newer_record.block_number IS NULL;
+WITH records AS (SELECT * FROM public.domain_records
+                WHERE records.block_number <= <block_height>)
+SELECT * FROM records
+LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+AND newer_records.block_number > records.block_number
+WHERE newer_records.block_number IS NULL;
 ```
 
 ### Queries against our domain_records table can be used to answer many different questions:
@@ -158,32 +153,26 @@ WHERE newer_record.block_number IS NULL;
 
 The label_hash for a domain never changes, so we don't care which record we get it from
 ```postgresql
-SELECT label_hash 
-FROM public.domain_records 
-WHERE name_hash = <domain_name_hash> 
-LIMIT 1;
+SELECT label_hash FROM public.domain_records
+WHERE name_hash = <domain_name_hash> LIMIT 1;
 ``` 
 
 2. What is the parent domain of this domain?
 
 To get the parent domain's namehash:
 ```postgresql
-SELECT parent_hash 
-FROM public.domain_records 
-WHERE name_hash = <domain_name_hash> 
-LIMIT 1;
+SELECT parent_hash FROM public.domain_records
+WHERE name_hash = <domain_name_hash> LIMIT 1;
 ```
 
 Or if we want the entire, most recent, domain record:
 ```postgresql
-SELECT * 
-FROM public.domain_records 
+SELECT * FROM public.domain_records
 WHERE parent_hash = (SELECT parent_hash 
                     FROM public.domain_records
                     WHERE name_hash = <domain_name_hash> 
                     LIMIT 1)
-ORDER BY block_number 
-DESC LIMIT 1;
+ORDER BY block_number DESC LIMIT 1;
 ```
 
 3. What are the subdomains of this domain?
@@ -206,12 +195,10 @@ AND block_number <= <block_height>;
 
 If we want only the most recent record for each subdomain:
 ```postgresql
-WITH recent_records AS (SELECT * 
-                        FROM public.domain_records 
-                        AS record
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+WITH recent_records AS (SELECT * FROM public.domain_records AS records
+                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                        AND newer_records.block_number > records.block_number
+                        WHERE newer_records.block_number IS NULL)
 SELECT *
 FROM recent_records
 WHERE parent_hash = <domain_name_hash>;
@@ -219,13 +206,12 @@ WHERE parent_hash = <domain_name_hash>;
 
 If we want the record for each subdomain at a given blockheight:
 ```postgresql
-WITH records_at AS (SELECT * 
-                    FROM public.domain_records  
-                    AS record
-                    WHERE record.block_number <= <block_height>
-                    LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                    AND newer_record.block_number > record.block_number
-                    WHERE newer_record.block_number IS NULL)
+WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
+                                    WHERE records.block_number <= <block_height>)
+                    SELECT * FROM records
+                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                    AND newer_records.block_number > records.block_number
+                    WHERE newer_records.block_number IS NULL)
 SELECT *
 FROM records_at
 WHERE parent_hash = <domain_name_hash>;
@@ -235,12 +221,10 @@ WHERE parent_hash = <domain_name_hash>;
 
 To get the domains the address currently owns:
 ```postgresql
-WITH recent_records AS (SELECT * 
-                        FROM public.domain_records 
-                        AS record
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+WITH recent_records AS (SELECT * FROM public.domain_records AS records
+                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                        AND newer_records.block_number > records.block_number
+                        WHERE newer_records.block_number IS NULL)
 SELECT name_hash
 FROM recent_records
 WHERE owner_addr = <address>;
@@ -248,13 +232,12 @@ WHERE owner_addr = <address>;
 
 To check what domains the address owned at a given block height:
 ```postgresql
-WITH records_at AS (SELECT * 
-                    FROM public.domain_records 
-                    AS record
-                    WHERE record.block_number <= <block_height>
-                    LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                    AND newer_record.block_number > record.block_number
-                    WHERE newer_record.block_number IS NULL)
+WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
+                                    WHERE records.block_number <= <block_height>)
+                    SELECT * FROM records
+                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                    AND newer_records.block_number > records.block_number
+                    WHERE newer_records.block_number IS NULL)
 SELECT name_hash
 FROM records_at
 WHERE owner_addr = <address>;
@@ -264,12 +247,10 @@ WHERE owner_addr = <address>;
 
 To get the namehashes that resolve to a given address:
 ```postgresql
-WITH recent_records AS (SELECT * 
-                        FROM public.domain_records 
-                        AS record
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+WITH recent_records AS (SELECT * FROM public.domain_records AS records
+                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                        AND newer_records.block_number > records.block_number
+                        WHERE newer_records.block_number IS NULL)
 SELECT name_hash
 FROM recent_records
 WHERE points_to_addr = <address>;
@@ -277,12 +258,10 @@ WHERE points_to_addr = <address>;
 
 Can also get the resolved names (if it exists) of the domains which resolve to a given address:
 ```postgresql
-WITH recent_records AS (SELECT * 
-                        FROM public.domain_records 
-                        AS record
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+WITH recent_records AS (SELECT * FROM public.domain_records AS records
+                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                        AND newer_records.block_number > records.block_number
+                        WHERE newer_records.block_number IS NULL)
 SELECT resolved_name
 FROM recent_records
 WHERE points_to_addr = <address>;
@@ -292,12 +271,10 @@ WHERE points_to_addr = <address>;
 
 To get which domains are currently using a given resolver:
 ```postgresql
-WITH recent_records AS (SELECT * 
-                        FROM public.domain_records 
-                        AS record
-                        LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                        AND newer_record.block_number > record.block_number
-                        WHERE newer_record.block_number IS NULL)
+WITH recent_records AS (SELECT * FROM public.domain_records AS records
+                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                        AND newer_records.block_number > records.block_number
+                        WHERE newer_records.block_number IS NULL)
 SELECT *
 FROM recent_records
 WHERE resolver_addr = <address>;
@@ -305,13 +282,12 @@ WHERE resolver_addr = <address>;
 
 To get which domains were using a given resolver at a given block height:
 ```postgresql
-WITH records_at AS (SELECT * 
-                    FROM public.domain_records  
-                    AS record
-                    WHERE record.block_number <= <block_height>
-                    LEFT OUTER JOIN public.domain_records AS newer_record ON newer_record.name_hash = record.name_hash
-                    AND newer_record.block_number > record.block_number
-                    WHERE newer_record.block_number IS NULL)
+WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
+                                    WHERE records.block_number <= <block_height>)
+                    SELECT * FROM records
+                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
+                    AND newer_records.block_number > records.block_number
+                    WHERE newer_records.block_number IS NULL)
 SELECT *
 FROM records_at
 WHERE resolver_addr = <address>;
