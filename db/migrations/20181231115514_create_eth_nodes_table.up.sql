@@ -19,3 +19,4 @@ CREATE SEQUENCE public.nodes_id_seq
 ALTER SEQUENCE public.nodes_id_seq OWNED BY public.eth_nodes.id;
 
 ALTER TABLE ONLY public.eth_nodes ALTER COLUMN id SET DEFAULT nextval('public.nodes_id_seq'::regclass);
+

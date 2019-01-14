@@ -83,15 +83,12 @@ CREATE TABLE public.domain_records (
   owner_addr            VARCHAR(66) NOT NULL,
   resolver_addr         VARCHAR(66),
   points_to_addr        VARCHAR(66),
-  resolved_name         VARCHAR(66),
+  resolved_name         TEXT,
   content_hash          VARCHAR(66),
-  content_type          BIGINT,
+  content_type          VARCHAR(66),
   pub_key_x             VARCHAR(66),
   pub_key_y             VARCHAR(66),
-  ttl                   BIGINT,
-  text_key              TEXT,
-  indexed_text_key      TEXT,
-  multihash             TEXT,
+  ttl                   VARCHAR(66),
   UNIQUE (block_number, name_hash)
 );
 ```
@@ -108,44 +105,9 @@ To watch ENS on ropsten:
 Note that the database inserts an updated record only every time the record changes state (a new event occurs for that namehash)
 This means the sequence of records for a given name_hash will have large block_number gaps where the state of the domain in those gaps has not changed since the previous record. 
 This removes a lot of redundancy that would otherwise exist in the database, reducing the storage used and greatly reducing the number of database writes performed during sync.
-But, this also affects how queries against the database must be structured to extract certain information, as shown below.
+But, this also affects how queries against the database must be structured to extract certain information, to help alleviate this issue we have created some stored Postgres functions that 
+can be easily accessed over a GraphQL api to answer certain questions:
 
-The below returns the most recent record for a given domain namehash
-```postgresql
-SELECT * FROM public.domain_records
-WHERE name_hash = <domain_name_hash>
-AND block_number <= (SELECT MAX(block_number)
-                    FROM public.domain_records)
-ORDER BY block_number
-DESC LIMIT 1;             
-```
-
-The below returns the record for a given domain namehash at the given block height
-```postgresql
-SELECT * FROM public.domain_records
-WHERE name_hash = <domain_name_hash>
-AND block_number <= <block_height>
-ORDER BY block_number
-DESC LIMIT 1;               
-```
-
-The below returns the most recent record for all domains 
-```postgresql
-SELECT * FROM public.domain_records AS records
-LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-AND newer_records.block_number > records.block_number
-WHERE newer_records.block_number IS NULL;
-```
-
-The below returns the records for all domains at a given blockheight
-```postgresql
-WITH records AS (SELECT * FROM public.domain_records
-                WHERE records.block_number <= <block_height>)
-SELECT * FROM records
-LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-AND newer_records.block_number > records.block_number
-WHERE newer_records.block_number IS NULL;
-```
 
 ### Queries against our domain_records table can be used to answer many different questions:
 
@@ -153,145 +115,174 @@ WHERE newer_records.block_number IS NULL;
 
 The label_hash for a domain never changes, so we don't care which record we get it from
 ```postgresql
-SELECT label_hash FROM public.domain_records
-WHERE name_hash = <domain_name_hash> LIMIT 1;
+CREATE FUNCTION public.label_hash(node VARCHAR(66)) RETURNS VARCHAR(66) AS $$
+  SELECT label_hash FROM public.domain_records
+  WHERE name_hash = node LIMIT 1;
+$$ LANGUAGE SQL STABLE;
 ``` 
 
 2. What is the parent domain of this domain?
 
 To get the parent domain's namehash:
 ```postgresql
-SELECT parent_hash FROM public.domain_records
-WHERE name_hash = <domain_name_hash> LIMIT 1;
+CREATE FUNCTION public.parent_hash(node VARCHAR(66)) RETURNS VARCHAR(66) AS $$
+  SELECT parent_hash FROM public.domain_records
+  WHERE name_hash = node LIMIT 1;
+$$ LANGUAGE SQL STABLE;
 ```
 
 Or if we want the entire, most recent, domain record:
 ```postgresql
-SELECT * FROM public.domain_records
-WHERE parent_hash = (SELECT parent_hash 
+CREATE FUNCTION public.parent_record(node VARCHAR(66)) RETURNS public.domain_records AS $$
+  SELECT * FROM public.domain_records
+  WHERE parent_hash = (SELECT parent_hash
                     FROM public.domain_records
-                    WHERE name_hash = <domain_name_hash> 
+                    WHERE name_hash = node
                     LIMIT 1)
-ORDER BY block_number DESC LIMIT 1;
+  ORDER BY block_number DESC LIMIT 1;
+$$ LANGUAGE SQL STABLE;
 ```
 
 3. What are the subdomains of this domain?
 
-If we want the subdomain namehashes at a given blockheight:
+If we want the current subdomain namehashes of a node
 ```postgresql
-SELECT DISTINCT name_hash
-FROM public.domain_records
-WHERE parent_hash = <domain_name_hash>
-AND block_number <= <block_height>;
+CREATE FUNCTION public.subdomain_hashes(node VARCHAR(66)) RETURNS SETOF VARCHAR(66) AS $$
+  SELECT DISTINCT name_hash FROM public.domain_records
+  WHERE parent_hash = node;
+$$ LANGUAGE SQL STABLE;
 ```
 
-If we want all the subdomain records that have ever existed up until the given block height:
+If we want the subdomain namehashes of a node at a given blockheight
 ```postgresql
-SELECT * 
-FROM public.domain_records
-WHERE parent_hash = <domain_name_hash>
-AND block_number <= <block_height>;
+CREATE FUNCTION public.subdomain_hashes_at(node VARCHAR(66), block BIGINT) RETURNS SETOF VARCHAR(66) AS $$
+  SELECT DISTINCT name_hash FROM public.domain_records
+  WHERE parent_hash = node
+  AND block_number <= block;
+$$ LANGUAGE SQL STABLE;
 ```
 
-If we want only the most recent record for each subdomain:
+If we want a set of the current records for each subdomain of the given node:
 ```postgresql
-WITH recent_records AS (SELECT * FROM public.domain_records AS records
-                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                        AND newer_records.block_number > records.block_number
-                        WHERE newer_records.block_number IS NULL)
-SELECT *
-FROM recent_records
-WHERE parent_hash = <domain_name_hash>;
+CREATE FUNCTION public.subdomain_records(node VARCHAR(66)) RETURNS SETOF public.domain_records AS $$
+  SELECT
+    domain_records.*
+  FROM
+    (SELECT
+      name_hash, MAX(block_number) AS block_number
+     FROM
+      domain_records
+     GROUP BY
+      name_hash) AS latest_records
+  INNER JOIN
+    domain_records
+  ON
+    domain_records.name_hash = latest_records.name_hash AND
+    domain_records.block_number = latest_records.block_number
+  WHERE
+    domain_records.parent_hash = node;
+$$ LANGUAGE SQL STABLE;
 ```
 
-If we want the record for each subdomain at a given blockheight:
+4. What domains does this address currently own?
+
+If we want a set of domain records currently owned by a given address
 ```postgresql
-WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
-                                    WHERE records.block_number <= <block_height>)
-                    SELECT * FROM records
-                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                    AND newer_records.block_number > records.block_number
-                    WHERE newer_records.block_number IS NULL)
-SELECT *
-FROM records_at
-WHERE parent_hash = <domain_name_hash>;
+CREATE FUNCTION public.domains_owned_by(addr VARCHAR(66)) RETURNS SETOF public.domain_records AS $$
+  SELECT
+    domain_records.*
+  FROM
+    (SELECT
+      name_hash, MAX(block_number) AS block_number
+     FROM
+      domain_records
+     GROUP BY
+      name_hash) AS latest_records
+  INNER JOIN
+    domain_records
+  ON
+    domain_records.name_hash = latest_records.name_hash AND
+    domain_records.block_number = latest_records.block_number
+  WHERE
+    domain_records.owner_addr = addr;
+$$ LANGUAGE SQL STABLE;
 ```
 
-4. What domains does this address own?
+5. What domains resolve to this address?
 
-To get the domains the address currently owns:
+To get a set of domain records that currently resolve to a given address:
 ```postgresql
-WITH recent_records AS (SELECT * FROM public.domain_records AS records
-                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                        AND newer_records.block_number > records.block_number
-                        WHERE newer_records.block_number IS NULL)
-SELECT name_hash
-FROM recent_records
-WHERE owner_addr = <address>;
+CREATE FUNCTION public.domains_resolving_to_addr(addr VARCHAR(66)) RETURNS SETOF public.domain_records AS $$
+  SELECT
+    domain_records.*
+  FROM
+    (SELECT
+      name_hash, MAX(block_number) AS block_number
+     FROM
+      domain_records
+     GROUP BY
+      name_hash) AS latest_records
+  INNER JOIN
+    domain_records
+  ON
+    domain_records.name_hash = latest_records.name_hash AND
+    domain_records.block_number = latest_records.block_number
+  WHERE
+    domain_records.points_to_addr = addr;
+$$ LANGUAGE SQL STABLE;
 ```
 
-To check what domains the address owned at a given block height:
+6. What domains resolve to this name?
+
+To get a set of domain records that currently resolve to a given name:
 ```postgresql
-WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
-                                    WHERE records.block_number <= <block_height>)
-                    SELECT * FROM records
-                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                    AND newer_records.block_number > records.block_number
-                    WHERE newer_records.block_number IS NULL)
-SELECT name_hash
-FROM records_at
-WHERE owner_addr = <address>;
+CREATE FUNCTION public.domains_resolving_to_name(name_str TEXT) RETURNS SETOF public.domain_records AS $$
+  SELECT
+    domain_records.*
+  FROM
+    (SELECT
+      name_hash, MAX(block_number) AS block_number
+     FROM
+      domain_records
+     GROUP BY
+      name_hash) AS latest_records
+  INNER JOIN
+    domain_records
+  ON
+    domain_records.name_hash = latest_records.name_hash AND
+    domain_records.block_number = latest_records.block_number
+  WHERE
+    domain_records.resolved_name = name_str;
+$$ LANGUAGE SQL STABLE;
 ```
 
-5. What names/domains currently point to this address?
+7. What domains are using this resolver?
 
-To get the namehashes that resolve to a given address:
+To get a set of domain records that are currently using a given resolver:
 ```postgresql
-WITH recent_records AS (SELECT * FROM public.domain_records AS records
-                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                        AND newer_records.block_number > records.block_number
-                        WHERE newer_records.block_number IS NULL)
-SELECT name_hash
-FROM recent_records
-WHERE points_to_addr = <address>;
+CREATE FUNCTION public.domains_resolved_by(resolver VARCHAR(66)) RETURNS SETOF public.domain_records AS $$
+  SELECT
+    domain_records.*
+  FROM
+    (SELECT
+      name_hash, MAX(block_number) AS block_number
+     FROM
+      domain_records
+     GROUP BY
+      name_hash) AS latest_records
+  INNER JOIN
+    domain_records
+  ON
+    domain_records.name_hash = latest_records.name_hash AND
+    domain_records.block_number = latest_records.block_number
+  WHERE
+    domain_records.resolver_addr = resolver;
+$$ LANGUAGE SQL STABLE;
 ```
 
-Can also get the resolved names (if it exists) of the domains which resolve to a given address:
-```postgresql
-WITH recent_records AS (SELECT * FROM public.domain_records AS records
-                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                        AND newer_records.block_number > records.block_number
-                        WHERE newer_records.block_number IS NULL)
-SELECT resolved_name
-FROM recent_records
-WHERE points_to_addr = <address>;
-```
-
-6. What domains are using this resolver?
-
-To get which domains are currently using a given resolver:
-```postgresql
-WITH recent_records AS (SELECT * FROM public.domain_records AS records
-                        LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                        AND newer_records.block_number > records.block_number
-                        WHERE newer_records.block_number IS NULL)
-SELECT *
-FROM recent_records
-WHERE resolver_addr = <address>;
-```
-
-To get which domains were using a given resolver at a given block height:
-```postgresql
-WITH records_at AS (WITH records AS (SELECT * FROM public.domain_records
-                                    WHERE records.block_number <= <block_height>)
-                    SELECT * FROM records
-                    LEFT OUTER JOIN public.domain_records AS newer_records ON newer_records.name_hash = records.name_hash
-                    AND newer_records.block_number > records.block_number
-                    WHERE newer_records.block_number IS NULL)
-SELECT *
-FROM records_at
-WHERE resolver_addr = <address>;
-```
+## Setting up GraphQL API using Postgraphile
+Install postgraphile and run the following command to access the GraphQL API:
+`npx postgraphile -c postgres:///ens_watcher --schema public`
 
 ## Running the tests
 1. Install dependencies `make installtools`
