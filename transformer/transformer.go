@@ -36,7 +36,7 @@ import (
 	"github.com/vulcanize/ens_watcher/transformer/getter"
 	"github.com/vulcanize/ens_watcher/transformer/models"
 	trep "github.com/vulcanize/ens_watcher/transformer/repository"
-	"github.com/vulcanize/ens_watcher/utils"
+	"github.com/vulcanize/ens_watcher/transformer/utils"
 )
 
 // Requires a light synced vDB (headers) and a running eth node (or infura)
@@ -54,16 +54,16 @@ type transformer struct {
 	fetcher.Fetcher     // Fetches event logs, using header hashes
 	converter.Converter // Converts watched event logs into custom log
 
-	// Ethereum network name and registry address
+	// Ethereum network name
 	// Default "" network is mainnet
 	Network string
 
-	// Core registry contract
+	// Registry contract
 	Registry             *contract.Contract
 	registryEventIds     []string
 	registryEventFilters []common.Hash
 
-	// Store resolver addresses and contracts
+	// Resolver addresses and contracts
 	ResolverAddresses    map[string]bool
 	Resolvers            map[string]*contract.Contract
 	resolverEventIds     map[string][]string
@@ -79,7 +79,7 @@ type transformer struct {
 // Transformer takes in config for blockchain, database, and network id
 func NewTransformer(network string, bc core.BlockChain, db *postgres.DB) (*transformer, error) {
 	if network != "" && network != "ropsten" {
-		return nil, errors.New(`invalid network id; only mainnet ("") and Ropsten ("ropsten") are allowed`)
+		return nil, errors.New(`invalid network id; only mainnet ("") and ropsten ("ropsten") are allowed`)
 	}
 
 	return &transformer{
@@ -123,14 +123,14 @@ func (tr *transformer) Init() error {
 		ParsedAbi:     tr.Parser.ParsedAbi(),
 		StartingBlock: start,
 		LastBlock:     -1,
-		Events:        tr.Parser.GetEvents([]string{}), // Watch all events
+		Events:        tr.Parser.GetEvents([]string{}), // Watch all events (NewOwner, Transfer, NewTTL, and NewResolver)
 		Methods:       nil,
 		FilterArgs:    map[string]bool{},
 		MethodArgs:    map[string]bool{},
 	}
 
-	tr.registryEventIds = make([]string, 0, 3)
-	tr.registryEventFilters = make([]common.Hash, 0, 3)
+	tr.registryEventIds = make([]string, 0, 4)
+	tr.registryEventFilters = make([]common.Hash, 0, 4)
 	tr.resolverEventIds = make(map[string][]string)
 	tr.resolverEventFilters = make(map[string][]common.Hash)
 
@@ -145,16 +145,23 @@ func (tr *transformer) Init() error {
 		tr.registryEventFilters = append(tr.registryEventFilters, e.Sig())
 	}
 
+	tr.ResolverAddresses = make(map[string]bool)
+	tr.Resolvers = make(map[string]*contract.Contract)
+	tr.resolverEventIds = make(map[string][]string)
+	tr.resolverEventFilters = make(map[string][]common.Hash)
+	tr.invalidResolvers = make(map[string]bool)
+	tr.invalidResolvers["0x0000000000000000000000000000000000000000"] = true
+
 	return nil
 }
 
-// Execute over registry contract
-// Finds new resolver contracts emitted from NewResolver events and executes over them
+// Executes over registry contract
+// Also finds new resolver contracts emitted from NewResolver events and executes over them
 func (tr *transformer) Execute() error {
 	// Configure converter with the registry contract
 	tr.Converter.Update(tr.Registry)
 
-	// This is to make sure that we use the same range for both all calls to MissingHeadersForAll in this pass
+	// This is to make sure that we use the same range for all calls to MissingHeadersForAll in this pass
 	lastBlock, err := tr.BlockRetriever.RetrieveMostRecentBlock()
 	if err != nil {
 		return err
@@ -208,7 +215,7 @@ func (tr *transformer) Execute() error {
 		}
 	}
 
-	// Watch resolver contracts
+	// Watch resolver contracts for the same block range
 	err = tr.watchResolvers(lastBlock)
 	if err != nil {
 		return err
@@ -311,12 +318,14 @@ func (tr *transformer) processRegistryLogs(logs map[string][]types.Log, blockNum
 // Configures contracts for watching Resolvers we found emitted from the Registry's NewResolver events
 func (tr *transformer) configResolvers(blockNumber int64) error {
 	for resolverAddr := range tr.ResolverAddresses {
-		_, ok1 := tr.invalidResolvers[resolverAddr]
-		_, ok2 := tr.Resolvers[resolverAddr]
-		if ok1 || ok2 { // Resolver contract has either already been setup or we already know it is invalid
+		_, ok := tr.Resolvers[resolverAddr]
+		if ok { // Resolver contract has either already been setup or we already know it is invalid
 			continue
 		}
-
+		_, ok = tr.invalidResolvers[resolverAddr]
+		if ok {
+			continue
+		}
 		// Check that resolver supports the interfaces we need it to
 		supports, err := tr.InterfaceGetter.GetSupportsResolverInterface(resolverAddr, blockNumber)
 		if err != nil {
@@ -324,12 +333,13 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 		}
 		if !supports {
 			// If it doesn't support the needed interfaces, skip configuring this resolver and add it to the list of invalid resolver so we don't keep checking
-			// The domain records that use this resolver will be incomplete, but that is better than bringing down the entire program with an error
+			// The domain records that use this resolver will be incomplete, but we can continue to collect their data from the registry
 			tr.invalidResolvers[resolverAddr] = true
 			continue
 		}
 		// If it does, use the standard ABI
-		err = tr.Parser.Parse(lcon.PublicResolverABI)
+		// TODO: Add ability to construct custom ABI based on individual results from calls to the contract's supportsInterface method
+		err = tr.Parser.Parse(lcon.PublicResolverAddress)
 		if err != nil {
 			return err
 		}
@@ -341,9 +351,9 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 			Address:       resolverAddr,
 			Abi:           tr.Parser.Abi(),
 			ParsedAbi:     tr.Parser.ParsedAbi(),
-			StartingBlock: blockNumber, // Start the resolver contract at the blockheight it is first seen emitted by the Registry from NewResolver events
+			StartingBlock: blockNumber, // Start the resolver contract at the blockheight it was first seen emitted by the Registry from NewResolver events
 			LastBlock:     -1,
-			Events:        tr.Parser.GetEvents([]string{}), // Watch all events
+			Events:        tr.Parser.GetEvents([]string{}), // Watch all resolver events
 			Methods:       nil,
 			FilterArgs:    map[string]bool{},
 			MethodArgs:    map[string]bool{},
@@ -498,41 +508,6 @@ func (tr *transformer) processResolverLogs(logs map[string][]types.Log, blockNum
 		lastRecord.BlockNumber = blockNumber
 		lastRecord.PubKeyX = pubkeyChanged.Values["x"]
 		lastRecord.PubKeyY = pubkeyChanged.Values["y"]
-		// Persist new record
-		err = tr.ENSRepository.CreateRecord(*lastRecord)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Process resolver TextChanged logs
-	for _, textChanged := range logs["TextChanged"] {
-		// Get most recent state
-		lastRecord, err := tr.ENSRepository.GetRecord(textChanged.Values["node"], blockNumber)
-		if err != nil {
-			return err
-		}
-		// Update with changed key, indexed key, and block height
-		lastRecord.BlockNumber = blockNumber
-		lastRecord.IndexedTextKey = textChanged.Values["indexedKey"]
-		lastRecord.TextKey = textChanged.Values["key"]
-		// Persist new record
-		err = tr.ENSRepository.CreateRecord(*lastRecord)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Process resolver MultihashChanged logs
-	for _, multihashChanged := range logs["MultihashChanged"] {
-		// Get most recent state
-		lastRecord, err := tr.ENSRepository.GetRecord(multihashChanged.Values["node"], blockNumber)
-		if err != nil {
-			return err
-		}
-		// Update with changed multihash and block height
-		lastRecord.BlockNumber = blockNumber
-		lastRecord.Multihash = multihashChanged.Values["hash"]
 		// Persist new record
 		err = tr.ENSRepository.CreateRecord(*lastRecord)
 		if err != nil {

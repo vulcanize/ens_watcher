@@ -15,3 +15,38 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package getter_test
+
+import (
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"github.com/vulcanize/vulcanizedb/pkg/geth"
+	"github.com/vulcanize/vulcanizedb/pkg/geth/client"
+	rpc2 "github.com/vulcanize/vulcanizedb/pkg/geth/converters/rpc"
+	"github.com/vulcanize/vulcanizedb/pkg/geth/node"
+
+	"github.com/vulcanize/ens_watcher/transformer/constants"
+	"github.com/vulcanize/ens_watcher/transformer/getter"
+)
+
+var _ = Describe("Interface Getter", func() {
+	Describe("GetSupportsResolverInterface", func() {
+		It("checks if the contract supports the standard resolver interfaces", func() {
+			blockNumber := int64(6885696)
+			infuraIPC := "https://mainnet.infura.io/v3/b09888c1113640cc9ab42750ce750c05"
+			rawRpcClient, err := rpc.Dial(infuraIPC)
+			Expect(err).NotTo(HaveOccurred())
+			rpcClient := client.NewRpcClient(rawRpcClient, infuraIPC)
+			ethClient := ethclient.NewClient(rawRpcClient)
+			blockChainClient := client.NewEthClient(ethClient)
+			node := node.MakeNode(rpcClient)
+			transactionConverter := rpc2.NewRpcTransactionConverter(ethClient)
+			blockChain := geth.NewBlockChain(blockChainClient, rpcClient, node, transactionConverter)
+			interfaceGetter := getter.NewInterfaceGetter(blockChain)
+			supports, err := interfaceGetter.GetSupportsResolverInterface(constants.PublicResolverAddress, blockNumber)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(supports).To(Equal(true))
+		})
+	})
+})

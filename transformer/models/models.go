@@ -17,20 +17,17 @@
 package models
 
 type DomainModel struct {
-	Name           string `db:"resolved_name"`
-	NameHash       string `db:"name_hash"`
-	BlockNumber    int64  `db:"block_number"`
-	LabelHash      string `db:"label_hash"`
-	ParentHash     string `db:"parent_hash"`
-	Owner          string `db:"owner_addr"`
-	ResolverAddr   string `db:"resolver_addr"`
-	PointsToAddr   string `db:"points_to_addr"`
-	ContentHash    string `db:"content_hash"`
-	ContentType    string `db:"content_type"`
-	PubKeyX        string `db:"pub_key_x"`
-	PubKeyY        string `db:"pub_key_y"`
-	TextKey        string `db:"text_key"`
-	IndexedTextKey string `db:"indexed_text_key"`
-	Multihash      string `db:"multihash"`
-	TTL            string `db:"ttl"`
+	Name         string `db:"resolved_name"`
+	NameHash     string `db:"name_hash"`
+	BlockNumber  int64  `db:"block_number"`
+	LabelHash    string `db:"label_hash"`
+	ParentHash   string `db:"parent_hash"`
+	Owner        string `db:"owner_addr"`
+	ResolverAddr string `db:"resolver_addr"`
+	PointsToAddr string `db:"points_to_addr"`
+	ContentHash  string `db:"content_hash"`
+	ContentType  string `db:"content_type"`
+	PubKeyX      string `db:"pub_key_x"`
+	PubKeyY      string `db:"pub_key_y"`
+	TTL          string `db:"ttl"`
 }

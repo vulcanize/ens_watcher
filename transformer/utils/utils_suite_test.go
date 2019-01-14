@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package repository_test
+package utils_test
 
 import (
 	"io/ioutil"
@@ -27,7 +27,7 @@ import (
 
 func TestRepository(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Repository Suite Test")
+	RunSpecs(t, "Utils Suite Test")
 }
 
 var _ = BeforeSuite(func() {

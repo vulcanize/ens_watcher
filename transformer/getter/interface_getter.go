@@ -24,7 +24,6 @@ import (
 
 type InterfaceGetter interface {
 	GetSupportsResolverInterface(resolverAddr string, blockNumber int64) (bool, error)
-	GetSupportsInterface(contractAbi, contractAddress string, blockNumber int64, methodArgs []interface{}) (bool, error)
 	GetBlockChain() core.BlockChain
 }
 
@@ -44,56 +43,40 @@ func NewInterfaceGetter(blockChain core.BlockChain) *interfaceGetter {
 func (g *interfaceGetter) GetSupportsResolverInterface(resolverAddr string, blockNumber int64) (bool, error) {
 	abi := constants.PublicResolverABI
 	args := make([]interface{}, 1)
-	args[0] = constants.AddrChangeSig
-	supports, err := g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
+	args[0] = constants.AddrChangeSig.Bytes()
+	supports, err := g.getSupportsInterface(abi, resolverAddr, blockNumber, args)
 	if err != nil {
 		return false, err
 	}
 	if !supports {
 		return false, nil
 	}
-	args[0] = constants.NameChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
+	args[0] = constants.NameChangeSig.Bytes()
+	supports, err = g.getSupportsInterface(abi, resolverAddr, blockNumber, args)
 	if err != nil {
 		return false, err
 	}
 	if !supports {
 		return false, nil
 	}
-	args[0] = constants.ContentChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
+	args[0] = constants.ContentChangeSig.Bytes()
+	supports, err = g.getSupportsInterface(abi, resolverAddr, blockNumber, args)
 	if err != nil {
 		return false, err
 	}
 	if !supports {
 		return false, nil
 	}
-	args[0] = constants.AbiChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
+	args[0] = constants.AbiChangeSig.Bytes()
+	supports, err = g.getSupportsInterface(abi, resolverAddr, blockNumber, args)
 	if err != nil {
 		return false, err
 	}
 	if !supports {
 		return false, nil
 	}
-	args[0] = constants.TextChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
-	if err != nil {
-		return false, err
-	}
-	if !supports {
-		return false, nil
-	}
-	args[0] = constants.TextChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
-	if err != nil {
-		return false, err
-	}
-	if !supports {
-		return false, nil
-	}
-	args[0] = constants.MultihashChangeSig.Hex()
-	supports, err = g.GetSupportsInterface(abi, resolverAddr, blockNumber, args)
+	args[0] = constants.PubkeyChangeSig.Bytes()
+	supports, err = g.getSupportsInterface(abi, resolverAddr, blockNumber, args)
 	if err != nil {
 		return false, err
 	}
@@ -105,7 +88,7 @@ func (g *interfaceGetter) GetSupportsResolverInterface(resolverAddr string, bloc
 }
 
 // Use this method to check whether or not a contract supports a given method/event interface
-func (g *interfaceGetter) GetSupportsInterface(contractAbi, contractAddress string, blockNumber int64, methodArgs []interface{}) (bool, error) {
+func (g *interfaceGetter) getSupportsInterface(contractAbi, contractAddress string, blockNumber int64, methodArgs []interface{}) (bool, error) {
 	return g.Fetcher.FetchBool("supportsInterface", contractAbi, contractAddress, blockNumber, methodArgs)
 }
 

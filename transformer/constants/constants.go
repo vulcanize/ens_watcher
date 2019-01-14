@@ -72,15 +72,19 @@ func (e Interface) Hex() string {
 	return strings[e]
 }
 
-func (e Interface) Bytes() []byte {
+func (e Interface) Bytes() [4]uint8 {
 	if e < MetaSig || e > MultihashChangeSig {
-		return nil
+		return [4]byte{}
 	}
 
 	str := e.Hex()
 	by, _ := hexutil.Decode(str)
+	var byArray [4]uint8
+	for i := 0; i < 4; i++ {
+		byArray[i] = by[i]
+	}
 
-	return by
+	return byArray
 }
 
 func (e Interface) EventSig() string {

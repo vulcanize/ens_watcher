@@ -14,22 +14,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package repository_test
+package utils
 
 import (
-	"io/ioutil"
-	"log"
-	"testing"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func TestRepository(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Repository Suite Test")
+func CreateSubnode(node, label string) string {
+	nodeBytes := common.HexToHash(node)
+	labelBytes := common.HexToHash(label)
+	return crypto.Keccak256Hash(append(nodeBytes.Bytes(), labelBytes.Bytes()...)).Hex()
 }
-
-var _ = BeforeSuite(func() {
-	log.SetOutput(ioutil.Discard)
-})

@@ -49,11 +49,11 @@ func (r *ensRepository) RecordExists(node string) (bool, error) {
 	}
 
 	var exists bool
-	err := r.db.Select(&exists,
+	err := r.db.Get(&exists,
 		`SELECT EXISTS(SELECT 1 
 				FROM public.domain_records
 				WHERE name_hash = $1
-				LIMIT 1`,
+				LIMIT 1)`,
 		node)
 
 	return exists, err
@@ -74,11 +74,8 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				content_type,
 				pub_key_x,
 				pub_key_y,
-				text_key,
-				indexed_text_key,
-				multihash,
 				ttl)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			    ON CONFLICT (block_number, name_hash) DO UPDATE SET
 				(block_number, 
 			    name_hash, 
@@ -92,10 +89,7 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				content_type,
 				pub_key_x,
 				pub_key_y,
-				text_key,
-				indexed_text_key,
-				multihash,
-				ttl) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+				ttl) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		record.BlockNumber,
 		record.NameHash,
 		record.LabelHash,
@@ -108,9 +102,6 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 		record.ContentType,
 		record.PubKeyX,
 		record.PubKeyY,
-		record.TextKey,
-		record.IndexedTextKey,
-		record.Multihash,
 		record.TTL,
 	)
 
@@ -127,9 +118,28 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 // We only store a new records when something has changed, so if a record does not exist for that precise blockheight
 // The most recent record previous to that blockheight is the state of the record at that blockheight
 func (r *ensRepository) GetRecord(node string, blockNumber int64) (*models.DomainModel, error) {
+	exists, err := r.RecordExists(node)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return &models.DomainModel{}, nil
+	}
 	var result models.DomainModel
-	err := r.db.Select(&result,
-		`SELECT resolved_name, name_hash, block_number, label_hash, parent_hash, owner_addr, resolver_addr, points_to_addr 
+	err = r.db.Get(&result,
+		`SELECT block_number, 
+			    name_hash, 
+				label_hash, 
+				parent_hash, 
+				owner_addr, 
+				resolver_addr, 
+				points_to_addr, 
+				resolved_name, 
+				content_hash,
+				content_type,
+				pub_key_x,
+				pub_key_y,
+				ttl
 		 FROM public.domain_records
 		 WHERE name_hash = $1
 		 AND block_number <= $2 
