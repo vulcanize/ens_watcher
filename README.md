@@ -1,4 +1,5 @@
 # ENS Contract Watcher
+[![Build Status](https://travis-ci.org/vulcanize/ens_watcher.svg?branch=master)](https://travis-ci.org/vulcanize/ens_watcher)
 
 ## Description
 A [VulcanizeDB](https://github.com/vulcanize/VulcanizeDB) transformer for watching events related to the [Ethereum Name Service](https://ens.domains) in order to generate domain records.
@@ -70,6 +71,7 @@ event ABIChanged(bytes32 indexed node, uint256 indexed contentType);
 event PubkeyChanged(bytes32 indexed node, bytes32 x, bytes32 y);
 event TextChanged(bytes32 indexed node, string indexedKey, string key);
 event MultihashChanged(bytes32 indexed node, bytes hash);
+event ContenthashChanged(bytes32 indexed node, bytes hash);
 ```
 
 Into ENS domain records in a Postgres table of this form:
@@ -83,17 +85,23 @@ CREATE TABLE public.domain_records (
   owner_addr            VARCHAR(66) NOT NULL,
   resolver_addr         VARCHAR(66),
   points_to_addr        VARCHAR(66),
-  resolved_name         TEXT,
-  content_hash          VARCHAR(66),
-  content_type          VARCHAR(66),
+  resolved_name         VARCHAR(66),
+  content_              VARCHAR(66),
+  content_type          TEXT,
   pub_key_x             VARCHAR(66),
   pub_key_y             VARCHAR(66),
-  ttl                   VARCHAR(66),
+  ttl                   TEXT,
+  text_key              TEXT,
+  indexed_text_key      TEXT,
+  multihash             TEXT,
+  contenthash           TEXT,
   UNIQUE (block_number, name_hash)
 );
 ```
 
-This command will need to be run against a lightSynced vDB and a full archival eth node. If a local full archive node is unavailable, see the previous point about running
+This command works with Resolvers of variable interfaces by finding the Resolver addresses emitted from NewResolver events and generating custom ABIs for each one based on calls to the Resolver's supportsInterface method
+
+This command will need to be run against a lightSynced vDB and a fast/full eth node. If a local fast/full node is unavailable, see the previous point about running
 this command against infura.
 
 `./ens_watcher generateRecords --config <config.toml>`

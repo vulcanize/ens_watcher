@@ -70,12 +70,16 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				resolver_addr, 
 				points_to_addr, 
 				resolved_name, 
-				content_hash,
+				content_,
 				content_type,
 				pub_key_x,
 				pub_key_y,
-				ttl)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				ttl,
+				text_key,
+				indexed_text_key,
+				multihash,
+				contenthash)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			    ON CONFLICT (block_number, name_hash) DO UPDATE SET
 				(block_number, 
 			    name_hash, 
@@ -85,11 +89,15 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 				resolver_addr, 
 				points_to_addr, 
 				resolved_name, 
-				content_hash,
+				content_,
 				content_type,
 				pub_key_x,
 				pub_key_y,
-				ttl) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+				ttl,
+				text_key,
+				indexed_text_key,
+				multihash,
+				contenthash) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		record.BlockNumber,
 		record.NameHash,
 		record.LabelHash,
@@ -98,11 +106,15 @@ func (r *ensRepository) CreateRecord(record models.DomainModel) error {
 		record.ResolverAddr,
 		record.PointsToAddr,
 		record.Name,
-		record.ContentHash,
+		record.Content,
 		record.ContentType,
 		record.PubKeyX,
 		record.PubKeyY,
 		record.TTL,
+		record.TextKey,
+		record.IndexedTextKey,
+		record.Multihash,
+		record.Contenthash,
 	)
 
 	if err != nil {
@@ -123,7 +135,9 @@ func (r *ensRepository) GetRecord(node string, blockNumber int64) (*models.Domai
 		return nil, err
 	}
 	if !exists {
-		return &models.DomainModel{}, nil
+		return &models.DomainModel{
+			NameHash: node,
+		}, nil
 	}
 	var result models.DomainModel
 	err = r.db.Get(&result,
@@ -135,11 +149,15 @@ func (r *ensRepository) GetRecord(node string, blockNumber int64) (*models.Domai
 				resolver_addr, 
 				points_to_addr, 
 				resolved_name, 
-				content_hash,
+				content_,
 				content_type,
 				pub_key_x,
 				pub_key_y,
-				ttl
+				ttl,
+				text_key,
+				indexed_text_key,
+				multihash,
+				contenthash
 		 FROM public.domain_records
 		 WHERE name_hash = $1
 		 AND block_number <= $2 
