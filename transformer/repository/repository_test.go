@@ -72,7 +72,9 @@ var _ = Describe("Repository", func() {
 
 			record, err := repo.GetRecord("fakeNameHash", 3327420)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(*record).To(Equal(models.DomainModel{}))
+			Expect(*record).To(Equal(models.DomainModel{
+				NameHash: "fakeNameHash",
+			}))
 		})
 
 		It("Fecthes the most up-to-date record for a given node, if it exists", func() {

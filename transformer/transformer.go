@@ -29,11 +29,10 @@ import (
 	"github.com/vulcanize/vulcanizedb/pkg/omni/light/retriever"
 	"github.com/vulcanize/vulcanizedb/pkg/omni/shared/constants"
 	"github.com/vulcanize/vulcanizedb/pkg/omni/shared/contract"
+	"github.com/vulcanize/vulcanizedb/pkg/omni/shared/getter"
 	"github.com/vulcanize/vulcanizedb/pkg/omni/shared/parser"
 	"github.com/vulcanize/vulcanizedb/pkg/omni/shared/types"
 
-	lcon "github.com/vulcanize/ens_watcher/transformer/constants"
-	"github.com/vulcanize/ens_watcher/transformer/getter"
 	"github.com/vulcanize/ens_watcher/transformer/models"
 	trep "github.com/vulcanize/ens_watcher/transformer/repository"
 	"github.com/vulcanize/ens_watcher/transformer/utils"
@@ -326,20 +325,17 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 		if ok {
 			continue
 		}
-		// Check that resolver supports the interfaces we need it to
-		supports, err := tr.InterfaceGetter.GetSupportsResolverInterface(resolverAddr, blockNumber)
-		if err != nil {
-			return err
-		}
-		if !supports {
-			// If it doesn't support the needed interfaces, skip configuring this resolver and add it to the list of invalid resolver so we don't keep checking
-			// The domain records that use this resolver will be incomplete, but we can continue to collect their data from the registry
+		// Construct the abi for this resolver
+		abiStr := tr.InterfaceGetter.GetABI(resolverAddr, blockNumber)
+		if abiStr == "" {
+			// If abi is empty and we don't support any of the desired interfaces, skip configuring this resolver and add it to the list of invalid resolver so
+			// we don't keep checking the domain records that use this resolver will be incomplete, but we can continue to collect their data from the registry
 			tr.invalidResolvers[resolverAddr] = true
 			continue
 		}
+
 		// If it does, use the standard ABI
-		// TODO: Add ability to construct custom ABI based on individual results from calls to the contract's supportsInterface method
-		err = tr.Parser.Parse(lcon.PublicResolverAddress)
+		err := tr.Parser.ParseAbiStr(abiStr)
 		if err != nil {
 			return err
 		}
@@ -472,7 +468,7 @@ func (tr *transformer) processResolverLogs(logs map[string][]types.Log, blockNum
 		}
 		// Update with changed content hash and block height
 		lastRecord.BlockNumber = blockNumber
-		lastRecord.ContentHash = contentChanged.Values["hash"]
+		lastRecord.Content = contentChanged.Values["hash"]
 		// Persist new record
 		err = tr.ENSRepository.CreateRecord(*lastRecord)
 		if err != nil {
@@ -508,6 +504,58 @@ func (tr *transformer) processResolverLogs(logs map[string][]types.Log, blockNum
 		lastRecord.BlockNumber = blockNumber
 		lastRecord.PubKeyX = pubkeyChanged.Values["x"]
 		lastRecord.PubKeyY = pubkeyChanged.Values["y"]
+		// Persist new record
+		err = tr.ENSRepository.CreateRecord(*lastRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Process resolver TextChanged logs
+	for _, textChanged := range logs["TextChanged"] {
+		// Get most recent state
+		lastRecord, err := tr.ENSRepository.GetRecord(textChanged.Values["node"], blockNumber)
+		if err != nil {
+			return err
+		}
+		// Update with changed pubkey variables and block height
+		lastRecord.BlockNumber = blockNumber
+		lastRecord.TextKey = textChanged.Values["key"]
+		lastRecord.IndexedTextKey = textChanged.Values["indexedKey"]
+		// Persist new record
+		err = tr.ENSRepository.CreateRecord(*lastRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Process resolver MultihashChanged logs
+	for _, multihashChanged := range logs["MultihashChanged"] {
+		// Get most recent state
+		lastRecord, err := tr.ENSRepository.GetRecord(multihashChanged.Values["node"], blockNumber)
+		if err != nil {
+			return err
+		}
+		// Update with changed pubkey variables and block height
+		lastRecord.BlockNumber = blockNumber
+		lastRecord.Multihash = multihashChanged.Values["hash"]
+		// Persist new record
+		err = tr.ENSRepository.CreateRecord(*lastRecord)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Process resolver ContenthashChanged logs
+	for _, contenthashChanged := range logs["ContenthashChanged"] {
+		// Get most recent state
+		lastRecord, err := tr.ENSRepository.GetRecord(contenthashChanged.Values["node"], blockNumber)
+		if err != nil {
+			return err
+		}
+		// Update with changed pubkey variables and block height
+		lastRecord.BlockNumber = blockNumber
+		lastRecord.Contenthash = contenthashChanged.Values["hash"]
 		// Persist new record
 		err = tr.ENSRepository.CreateRecord(*lastRecord)
 		if err != nil {
