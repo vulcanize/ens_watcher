@@ -68,6 +68,10 @@ type transformer struct {
 	resolverEventIds     map[string][]string
 	resolverEventFilters map[string][]common.Hash
 	invalidResolvers     map[string]bool
+
+	// Indexes aid in maintaining header continuity
+	registryIndex int64
+	resolverIndex int64
 }
 
 // Order-of-operations:
@@ -128,6 +132,7 @@ func (tr *transformer) Init() error {
 		MethodArgs:    map[string]bool{},
 	}
 
+	tr.registryIndex = tr.Registry.StartingBlock
 	tr.registryEventIds = make([]string, 0, 4)
 	tr.registryEventFilters = make([]common.Hash, 0, 4)
 	tr.resolverEventIds = make(map[string][]string)
@@ -160,14 +165,8 @@ func (tr *transformer) Execute() error {
 	// Configure converter with the registry contract
 	tr.Converter.Update(tr.Registry)
 
-	// This is to make sure that we use the same range for all calls to MissingHeadersForAll in this pass
-	lastBlock, err := tr.BlockRetriever.RetrieveMostRecentBlock()
-	if err != nil {
-		return err
-	}
-
 	// Retrieve unchecked headers for the registry
-	missingHeaders, err := tr.HeaderRepository.MissingHeadersForAll(tr.Registry.StartingBlock, lastBlock, tr.registryEventIds)
+	missingHeaders, err := tr.HeaderRepository.MissingHeadersForAll(tr.registryIndex, -1, tr.registryEventIds)
 	if err != nil {
 		return err
 	}
@@ -214,8 +213,11 @@ func (tr *transformer) Execute() error {
 		}
 	}
 
+	tr.resolverIndex = tr.registryIndex
+	tr.registryIndex = missingHeaders[len(missingHeaders)-1].BlockNumber + 1
+
 	// Watch resolver contracts for the same block range
-	err = tr.watchResolvers(lastBlock)
+	err = tr.watchResolvers()
 	if err != nil {
 		return err
 	}
@@ -326,7 +328,7 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 			continue
 		}
 		// Construct the abi for this resolver
-		abiStr := tr.InterfaceGetter.GetABI(resolverAddr, blockNumber)
+		abiStr := tr.InterfaceGetter.GetABI(resolverAddr, -1)
 		if abiStr == "" {
 			// If abi is empty and we don't support any of the desired interfaces, skip configuring this resolver and add it to the list of invalid resolver so
 			// we don't keep checking the domain records that use this resolver will be incomplete, but we can continue to collect their data from the registry
@@ -334,7 +336,7 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 			continue
 		}
 
-		// If it does, use the standard ABI
+		// Load this abi into the abi parser
 		err := tr.Parser.ParseAbiStr(abiStr)
 		if err != nil {
 			return err
@@ -347,7 +349,7 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 			Address:       resolverAddr,
 			Abi:           tr.Parser.Abi(),
 			ParsedAbi:     tr.Parser.ParsedAbi(),
-			StartingBlock: blockNumber, // Start the resolver contract at the blockheight it was first seen emitted by the Registry from NewResolver events
+			StartingBlock: blockNumber, // Start the resolver contract at the blockheight it was first seen emitted by the Registry from a NewResolver event
 			LastBlock:     -1,
 			Events:        tr.Parser.GetEvents([]string{}), // Watch all resolver events
 			Methods:       nil,
@@ -371,14 +373,14 @@ func (tr *transformer) configResolvers(blockNumber int64) error {
 }
 
 // Watches the configured Resolvers
-func (tr *transformer) watchResolvers(lastBlock int64) error {
+func (tr *transformer) watchResolvers() error {
 	// Iterate over resolver contracts
 	for addr, resolver := range tr.Resolvers {
 		// Update converter with this contract
 		tr.Converter.Update(resolver)
 
 		// Retrieve unchecked headers for this resolver
-		missingHeaders, err := tr.HeaderRepository.MissingHeadersForAll(resolver.StartingBlock, lastBlock, tr.resolverEventIds[addr])
+		missingHeaders, err := tr.HeaderRepository.MissingHeadersForAll(tr.resolverIndex, tr.registryIndex-1, tr.resolverEventIds[addr])
 		if err != nil {
 			return err
 		}

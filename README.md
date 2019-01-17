@@ -99,7 +99,7 @@ CREATE TABLE public.domain_records (
 );
 ```
 
-This command will need to be run against a lightSynced vDB and a full archival eth node. If a local full archive node is unavailable, see the previous point about running
+This command will need to be run against a lightSynced vDB and a fast/full eth node. If a local full/fst node is unavailable, see the previous point about running
 this command against infura.
 
 `./ens_watcher generateRecords --config <config.toml>`
